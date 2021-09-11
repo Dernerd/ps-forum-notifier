@@ -1,0 +1,91 @@
+<?php
+
+/*
+Plugin Name: PS Forum Notifier
+Plugin URI: https://n3rds.work/piestingtal_source/ps-forum-plugin/
+Description: Sendet Benachrichtigungen vor Ort über Forenabonnements
+Version: 1.4.0
+Requires at least: 3.4.2
+Tested up to: 4.0
+License: GNU General Public License 2.0 (GPL) http://www.gnu.org/licenses/gpl.html
+Author: DerN3rd
+Author URI: https://n3rds.work
+*/
+require 'psource/psource-plugin-update/plugin-update-checker.php';
+$MyUpdateChecker = Puc_v4_Factory::buildUpdateChecker(
+	'https://n3rds.work//wp-update-server/?action=get_metadata&slug=ps-forum-notifier', 
+	__FILE__, 
+	'ps-forum-notifier' 
+);
+// Where am I?
+$plugin_dir = ! empty( $network_plugin ) ? $network_plugin : $plugin;
+
+// Set symlink friendly dir constant
+define( 'PS_FORUM_NOTIFIER_PLUGIN_DIR', dirname( $plugin_dir ) );
+
+// Where to find plugin templates
+// Used by PS_Forum_Notifier::get_template
+define( 'PS_FORUM_NOTIFIER_TEMPLATE_DIR', dirname( __FILE__ ) . '/templates' );
+
+// Handles mail events
+require_once( dirname( __FILE__ ) . '/includes/mailer.php' );
+PS_Forum_Notifier_Mailer::__setup();
+
+// Add admin interface if current user is a site admin
+require_once( dirname( __FILE__ ) . '/includes/admin.php' );
+PS_Forum_Notifier_Admin::__setup();
+
+if ( ps_forum_notifier_notify_on_all_replies() ) :
+	// Custom plugin functions for new notify on all replies functionality
+	require_once( dirname( __FILE__ ) . '/includes/functions.php' );
+endif;
+
+/**
+ * Initiates this plugin by setting up the forum notifier component.
+ * @return void
+ */
+function ps_forum_notifier_init() {
+	if( version_compare( BP_VERSION, '1.3', '>' ) ) {
+		// Buddypress component that handles the notifications
+		require_once( dirname( __FILE__ ) . '/includes/notifier.php' );
+		PS_Forum_Notifier::__setup();
+	}
+}
+
+// Setup component with bp_setup_components action
+add_action( 'bp_setup_components', 'ps_forum_notifier_init' );
+
+/**
+ * Adds forum notifier component to the active components list.
+ * This is a must do if we want the notifications to work.
+ * @param array $components alread activated components
+ * @return array
+ */
+function ps_forum_notifier_add_active_component( $components ) {
+	return array_merge( $components, array( 'forum_notifier' => true ) );
+}
+
+// Setup active components with bp_active_components filter
+add_filter( 'bp_active_components', 'ps_forum_notifier_add_active_component' );
+
+// Enqueues js if new notify on all replies functionality is activated
+function ps_forum_notifier_enqueue_scripts() {
+	if ( ps_forum_notifier_notify_on_all_replies() && bp_is_groups_component() && bp_is_current_action( 'forum' ) ) {
+		wp_enqueue_script( 'ps-forum-notifier', WP_PLUGIN_URL . '/' . basename( __DIR__ ) . '/js/ps-forum-notifier.js', array( 'jquery' ), '1.4.0', true );
+	}
+}
+add_action( 'wp_enqueue_scripts', 'ps_forum_notifier_enqueue_scripts' );
+
+/**
+ * Check if admin has enabled the "new functionality" for notifying group members on all forum replies
+ * @return bool
+ */
+function ps_forum_notifier_notify_on_all_replies() {
+	$settings = get_option( 'ps_forum_notifier_settings', get_site_option( 'ps_forum_notifier_settings', array() ) );
+
+	if ( $settings['notifications-for-all-replies'] == 'yes' ) {
+		return true;
+	} else {
+		return false;
+	}
+}
